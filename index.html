@@ -282,29 +282,26 @@ async function sendFile() {
             progressBar.style.width = '0%';
 
             try {
-                // 1. Comando Curto de Abertura (Espera a placa abrir o SD Card)
+                // 1. Comando Curto de Abertura (Tudo WithoutResponse agora!)
                 log(`Enviando cabeçalho de inicialização para: ${targetFilename}`);
                 const header = `S:${targetFilename}`;
-                await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
+                await rxCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(header));
                 
-                // Dá 300ms para o ESP32 abrir o arquivo fisicamente
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 400));
 
                 // 2. Fatiamento em 20 bytes
                 const fullBuffer = new TextEncoder().encode(textContent);
                 const totalBytes = fullBuffer.length;
                 const chunkSize = 20; 
 
-                log("Iniciando streaming de dados via BLE (Modo Assíncrono)...");
+                log("Iniciando streaming seguro de dados via BLE...");
                 
                 for (let i = 0; i < totalBytes; i += chunkSize) {
                     const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
-                    
-                    // MUDANÇA CRÍTICA AQUI: WithoutResponse (Não cobra o recibo do ESP32)
                     await rxCharacteristic.writeValueWithoutResponse(chunkBuffer);
                     
-                    // MUDANÇA CRÍTICA 2: Pausa 25ms para o Cartão SD "respirar" e gravar
-                    await new Promise(r => setTimeout(r, 25));
+                    // Pausa de 40ms de segurança absoluta
+                    await new Promise(r => setTimeout(r, 40));
                     
                     const percent = Math.round(((i + chunkBuffer.length) / totalBytes) * 100);
                     progressBar.style.width = `${percent}%`;
@@ -312,10 +309,10 @@ async function sendFile() {
                 }
 
                 // 3. Comando Curto de Fechamento
-                await new Promise(r => setTimeout(r, 300)); // Espera os últimos bytes gravarem
+                await new Promise(r => setTimeout(r, 400));
                 log("Enviando comando de encerramento...");
                 const footer = `E:${targetFilename}`;
-                await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
+                await rxCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(footer));
 
                 log(`Sucesso absoluto! ${targetFilename} atualizado sem cabos.`);
                 document.getElementById('ble-status').innerText = "Transferência Concluída!";
