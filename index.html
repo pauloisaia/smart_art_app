@@ -187,9 +187,8 @@
 </div>
 
 <script>
-    // UUIDs Oficiais do Perfil NUS (Nordic UART Service) - Padrão do mercado para simular Serial via BLE
     const NUS_SERVICE_UUID   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-    const NUS_RX_CHAR_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // O PC grava dados aqui (Entrada no ESP32)
+    const NUS_RX_CHAR_UUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
     let bleDevice = null;
     let rxCharacteristic = null;
@@ -218,7 +217,6 @@
             log("Vinculando Canal de Escrita (RX)...");
             rxCharacteristic = await service.getCharacteristic(NUS_RX_CHAR_UUID);
 
-            // Interface em caso de sucesso
             document.getElementById('device-name').innerText = bleDevice.name;
             document.getElementById('device-name').className = "status-value connected";
             document.getElementById('ble-status').innerText = "Pronto para transferência";
@@ -278,49 +276,40 @@
         reader.onload = async function(e) {
             const textContent = e.target.result;
             
-            // Trava os botões durante a transferência
             document.getElementById('btn-send').disabled = true;
             document.getElementById('progress-container').style.display = 'block';
             const progressBar = document.getElementById('progress-bar');
             progressBar.style.width = '0%';
 
             try {
-                // 1. Comando de Abertura de Protocolo: Avisa qual arquivo vai ser reescrito no SD Card
+                // 1. Comando Curto de Abertura (Evita erro de MTU > 20 bytes no Windows)[cite: 1]
                 log(`Enviando cabeçalho de inicialização para: ${targetFilename}`);
-                const header = `START_TXT:${targetFilename}
-`;
+                const header = `S:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
                 
-                // Pequeno delay para o ESP32 abrir o arquivo no SD Card com segurança
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 200));
 
-                // 2. Fragmentação do arquivo em pacotes MTU seguros (Ex: 200 bytes por vez)
-                const chunkSize = 200;
-                const encoder = new TextEncoder();
-                let bytesSent = 0;
-                const totalBytes = textContent.length;
+                // 2. Fatiamento em exatos 20 bytes (Limite Universal de Payload do BLE)[cite: 1]
+                const fullBuffer = new TextEncoder().encode(textContent);
+                const totalBytes = fullBuffer.length;
+                const chunkSize = 20; 
 
-                log("Iniciando streaming de dados via BLE...");
+                log("Iniciando streaming seguro de dados via BLE...");
                 
                 for (let i = 0; i < totalBytes; i += chunkSize) {
-                    const chunkStr = textContent.substring(i, i + chunkSize);
-                    const chunkBuffer = encoder.encode(chunkStr);
-                    
-                    // Escreve o bloco na memória do ESP32 e aguarda a confirmação de recebimento
+                    const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
                     await rxCharacteristic.writeValueWithResponse(chunkBuffer);
                     
-                    bytesSent += chunkStr.length;
-                    const percent = Math.round((bytesSent / totalBytes) * 100);
+                    const percent = Math.round(((i + chunkBuffer.length) / totalBytes) * 100);
                     progressBar.style.width = `${percent}%`;
                     document.getElementById('ble-status').innerText = `Enviando... ${percent}%`;
                 }
 
-                // 3. Comando de Fechamento de Protocolo: Avisa que o arquivo terminou
+                // 3. Comando Curto de Fechamento[cite: 1]
                 await new Promise(r => setTimeout(r, 200));
                 log("Enviando comando de encerramento...");
-                const footer = `END_TXT:${targetFilename}
-`;
-                await rxCharacteristic.writeValueWithResponse(encoder.encode(footer));
+                const footer = `E:${targetFilename}`;
+                await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
 
                 log(`Sucesso absoluto! ${targetFilename} atualizado sem cabos.`);
                 document.getElementById('ble-status').innerText = "Transferência Concluída!";
