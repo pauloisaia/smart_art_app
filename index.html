@@ -160,26 +160,34 @@ async function sendFile() {
             progressBar.style.width = '0%';
 
             try {
-                // COMANDO 'S': COM RESPOSTA
+                // 1. Comando S (Com Resposta) - Garante que o ESP32 alocou a RAM
                 const header = `S:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
+                await new Promise(r => setTimeout(r, 100)); // Pequena pausa para a RAM
 
                 const fullBuffer = new TextEncoder().encode(textContent);
                 const totalBytes = fullBuffer.length;
                 const chunkSize = 20; 
 
-                // LOOP: COM RESPOSTA (O "Ping-Pong" 100% Blindado contra perdas)
+                // 2. O Miolo (Sem Resposta) - O Chrome não trava
+                log("Transmitindo dados para a RAM do quadro...");
                 for (let i = 0; i < totalBytes; i += chunkSize) {
                     const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
-                    await rxCharacteristic.writeValueWithResponse(chunkBuffer);
+                    
+                    // Envia sem pedir recibo
+                    await rxCharacteristic.writeValueWithoutResponse(chunkBuffer);
+                    
+                    // O SEGREDO: 15ms de pausa. Dá tempo do rádio do ESP32 respirar.
+                    await new Promise(r => setTimeout(r, 15)); 
                     
                     const percent = Math.round(((i + chunkBuffer.length) / totalBytes) * 100);
                     progressBar.style.width = `${percent}%`;
                     document.getElementById('ble-status').innerText = `Enviando... ${percent}%`;
                 }
 
-                // COMANDO 'E': COM RESPOSTA
-                log("Enviando comando de encerramento...");
+                // 3. Comando E (Com Resposta) - Garante o descarregamento no SD
+                await new Promise(r => setTimeout(r, 300)); // Espera os ultimos pacotes chegarem
+                log("Enviando comando de gravação final...");
                 const footer = `E:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
 
