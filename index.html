@@ -160,34 +160,39 @@ async function sendFile() {
             progressBar.style.width = '0%';
 
             try {
-                // 1. Comando S (Com Resposta para garantir abertura)
+                // 1. Comando S (Com Resposta para garantir abertura na RAM)
                 const header = `S:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
+                await new Promise(r => setTimeout(r, 100)); // Espera 100ms para o ESP32 alocar memória
 
                 const fullBuffer = new TextEncoder().encode(textContent);
                 const totalBytes = fullBuffer.length;
                 const chunkSize = 20; 
 
-                log("Transmitindo com confirmacao de recebimento (GATT ACK)...");
+                log("Transmitindo dados em blocos sequenciais (Sem ACK)...");
                 
-                // 2. Loop COM RESPOSTA (Vai ser um pouco mais lento, mas NUNCA perde bytes)
+                // 2. Loop SEM RESPOSTA (Mas com Pausa! O Chrome não pula pacotes assim)
                 for (let i = 0; i < totalBytes; i += chunkSize) {
                     const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
                     
-                    // Obriga o Windows a esperar o ESP32 engolir os 20 bytes
-                    await rxCharacteristic.writeValueWithResponse(chunkBuffer);
+                    await rxCharacteristic.writeValueWithoutResponse(chunkBuffer);
+                    
+                    // ESSA É A CHAVE: Pausa obrigatória de 20ms
+                    await new Promise(r => setTimeout(r, 20)); 
                     
                     const percent = Math.round(((i + chunkBuffer.length) / totalBytes) * 100);
                     progressBar.style.width = `${percent}%`;
                     document.getElementById('ble-status').innerText = `Enviando... ${percent}%`;
                 }
 
-                // 3. Comando E (Com Resposta para garantir gravação SD)
+                await new Promise(r => setTimeout(r, 300)); // Espera os últimos pacotes aterrissarem no ESP32
+
+                // 3. Comando E (Com Resposta para forçar a gravação no Cartão SD)
                 log("Enviando comando de gravação final...");
                 const footer = `E:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
 
-                log(`Arquivo gravado na memoria do Quadro!`);
+                log(`Arquivo processado pelo Quadro com sucesso!`);
                 document.getElementById('ble-status').innerText = "Transferência Concluída!";
             } catch (err) {
                 log(`Falha no envio: ${err}`);
