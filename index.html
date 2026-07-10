@@ -160,28 +160,25 @@ async function sendFile() {
             progressBar.style.width = '0%';
 
             try {
-                // COMANDO 'S': COM RESPOSTA (Obriga o PC a esperar o ESP32)
+                // COMANDO 'S': COM RESPOSTA
                 const header = `S:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
-                await new Promise(r => setTimeout(r, 100));
 
                 const fullBuffer = new TextEncoder().encode(textContent);
                 const totalBytes = fullBuffer.length;
                 const chunkSize = 20; 
 
-                // LOOP: SEM RESPOSTA (Para ter velocidade alta)
+                // LOOP: COM RESPOSTA (O "Ping-Pong" 100% Blindado contra perdas)
                 for (let i = 0; i < totalBytes; i += chunkSize) {
                     const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
-                    await rxCharacteristic.writeValueWithoutResponse(chunkBuffer);
-                    await new Promise(r => setTimeout(r, 40));
+                    await rxCharacteristic.writeValueWithResponse(chunkBuffer);
+                    
                     const percent = Math.round(((i + chunkBuffer.length) / totalBytes) * 100);
                     progressBar.style.width = `${percent}%`;
                     document.getElementById('ble-status').innerText = `Enviando... ${percent}%`;
                 }
 
-                await new Promise(r => setTimeout(r, 200));
-                
-                // COMANDO 'E': COM RESPOSTA (Obriga o PC a esperar o SD Card salvar)
+                // COMANDO 'E': COM RESPOSTA
                 log("Enviando comando de encerramento...");
                 const footer = `E:${targetFilename}`;
                 await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
