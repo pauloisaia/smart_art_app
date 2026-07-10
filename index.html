@@ -140,7 +140,7 @@
         }
     }
 
-    async function sendFile() {
+async function sendFile() {
         const fileInput = document.getElementById('file-input');
         const targetSelect = document.getElementById('file-target');
         
@@ -160,14 +160,16 @@
             progressBar.style.width = '0%';
 
             try {
+                // COMANDO 'S': COM RESPOSTA (Obriga o PC a esperar o ESP32)
                 const header = `S:${targetFilename}`;
-                await rxCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(header));
-                await new Promise(r => setTimeout(r, 400));
+                await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(header));
+                await new Promise(r => setTimeout(r, 100));
 
                 const fullBuffer = new TextEncoder().encode(textContent);
                 const totalBytes = fullBuffer.length;
                 const chunkSize = 20; 
 
+                // LOOP: SEM RESPOSTA (Para ter velocidade alta)
                 for (let i = 0; i < totalBytes; i += chunkSize) {
                     const chunkBuffer = fullBuffer.slice(i, i + chunkSize);
                     await rxCharacteristic.writeValueWithoutResponse(chunkBuffer);
@@ -177,11 +179,14 @@
                     document.getElementById('ble-status').innerText = `Enviando... ${percent}%`;
                 }
 
-                await new Promise(r => setTimeout(r, 400));
+                await new Promise(r => setTimeout(r, 200));
+                
+                // COMANDO 'E': COM RESPOSTA (Obriga o PC a esperar o SD Card salvar)
+                log("Enviando comando de encerramento...");
                 const footer = `E:${targetFilename}`;
-                await rxCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(footer));
+                await rxCharacteristic.writeValueWithResponse(new TextEncoder().encode(footer));
 
-                log(`Arquivo salvo no Cartão SD!`);
+                log(`Arquivo gravado fisicamente no Cartão SD!`);
                 document.getElementById('ble-status').innerText = "Transferência Concluída!";
             } catch (err) {
                 log(`Falha no envio: ${err}`);
